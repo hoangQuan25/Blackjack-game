@@ -1,121 +1,101 @@
-// src/App.js
-import React, { useEffect } from "react";
-import { useKeycloak } from "@react-keycloak/web";
-import { BrowserRouter, Route, Routes, Navigate, Outlet } from "react-router-dom";
-import { ToastContainer } from "react-toastify";
-import HomePage from "./pages/HomePage";
-import LoginPage from "./pages/LoginPage";
-import UserInfoPage from "./pages/UserInfoPage";
-import MainLayout from "./layouts/MainLayout";
-import { setupAuthInterceptor } from "./api/apiClient";
-import LiveAuctionDetailPage from "./pages/LiveAuctionDetailPage";
-import TimedAuctionDetailPage from "./pages/TimedAuctionDetailPage";
-import { NotificationProvider } from "./context/NotificationContext";
-import FollowingAuctionsPage from "./pages/FollowingAuctionsPage";
-import MyOrdersPage from "./pages/MyOrdersPage";
-import OrderDetailPage from "./pages/OrderDetailPage";
-import PublicSellerProfilePage from "./pages/PublicSellerProfilePage";
-import AuctionSearchPage from "./pages/AuctionSearchPage";
-import AuctionRulesGuidePage from "./pages/AuctionRulesGuidePage";
+import { useState, useEffect } from 'react';
+import GameBoard from './components/GameBoard';
+import Actions from './components/Actions';
+import * as api from './api/api'; // Chúng ta sẽ tạo file này ngay sau đây
 
-const PrivateRoute = ({ children }) => {
-  const { keycloak, initialized } = useKeycloak();
+export default function App() {
+  const [gameState, setGameState] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!initialized) {
-    return <div>Loading...</div>; // Or a spinner
+  // Lấy trạng thái game khi component được tải lần đầu
+  useEffect(() => {
+    const fetchGameState = async () => {
+      try {
+        const state = await api.getGameState();
+        setGameState(state);
+      } catch (error) {
+        console.error("Lỗi khi lấy trạng thái game:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchGameState();
+  }, []);
+
+  const handleApiCall = async (apiFunction) => {
+    try {
+      const newState = await apiFunction();
+      setGameState(newState);
+    } catch (error) {
+      console.error("Lỗi khi thực hiện hành động:", error);
+    }
+  };
+  
+  const getActiveHandIndex = () => {
+    if (!gameState || !gameState.playerHands) return -1;
+    return gameState.playerHands.findIndex(hand => hand.status === 'PLAYING');
+  };
+
+  const handleHit = () => {
+    const activeIndex = getActiveHandIndex();
+    if (activeIndex !== -1) {
+      handleApiCall(() => api.hit(activeIndex));
+    }
+  };
+
+  const handleStand = () => {
+    const activeIndex = getActiveHandIndex();
+    if (activeIndex !== -1) {
+      handleApiCall(() => api.stand(activeIndex));
+    }
+  };
+  
+  const handleDouble = () => {
+      const activeIndex = getActiveHandIndex();
+      if (activeIndex !== -1) {
+          handleApiCall(() => api.doubleDown(activeIndex));
+      }
+  };
+  
+  const handleSplit = () => {
+      const activeIndex = getActiveHandIndex();
+      if (activeIndex !== -1) {
+          handleApiCall(() => api.split(activeIndex));
+      }
+  };
+
+  if (loading) {
+    return <div className="bg-gray-900 text-white min-h-screen flex items-center justify-center">Đang tải...</div>;
   }
 
-  return keycloak.authenticated ? children : <Navigate to="/login" replace />;
-};
-
-const SellerRoute = ({ children }) => {
-  const { keycloak } = useKeycloak();
-  return keycloak.authenticated && keycloak.hasRealmRole("ROLE_SELLER") ? (
-    children
-  ) : (
-    <Navigate to="/" />
-  );
-};
-
-function App() {
-  const { keycloak, initialized } = useKeycloak();
-
-  useEffect(() => {
-    if (initialized && keycloak.authenticated) {
-      setupAuthInterceptor(keycloak);
-    }
-  }, [initialized, keycloak.authenticated]);
-
-  if (!initialized) {
-    return <div>Loading...</div>;
+  if (!gameState) {
+    return <div className="bg-gray-900 text-white min-h-screen flex items-center justify-center">Không thể kết nối tới server game.</div>;
   }
 
   return (
-    <BrowserRouter>
-      <ToastContainer
-        position="top-right"
-        autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop={true}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="light"
-      />
-      <NotificationProvider>
-        <Routes>
-          <Route
-            path="/login"
-            element={
-              !keycloak.authenticated ? <LoginPage /> : <Navigate to="/" />
-            }
-          />
+    <div className="bg-green-800 text-white min-h-screen flex flex-col items-center p-4 font-sans">
+      <h1 className="text-4xl font-bold mb-4">Blackjack</h1>
+      
+      <div className="w-full max-w-4xl">
+        <GameBoard gameState={gameState} />
+        
+        <div className="my-4 p-3 bg-black bg-opacity-50 rounded-lg text-center">
+            <p className="text-xl font-semibold">Số dư: ${gameState.playerBalance.toFixed(2)}</p>
+            <p className="text-lg italic mt-1">{gameState.gameMessage}</p>
+        </div>
 
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route
-              path="/live-auctions/:auctionId"
-              element={<LiveAuctionDetailPage />}
-            />
-            <Route
-              path="/timed-auctions/:auctionId"
-              element={<TimedAuctionDetailPage />}
-            />
-            <Route
-              path="/auction-rules-guide"
-              element={<AuctionRulesGuidePage />}
-            />
-            <Route path="/search" element={<AuctionSearchPage />} />
-            <Route
-              path="/seller/:identifier"
-              element={<PublicSellerProfilePage />}
-            />
-
-            <Route
-              path="/profile"
-              element={<PrivateRoute><UserInfoPage /></PrivateRoute>}
-            />
-            <Route
-              path="/following"
-              element={<PrivateRoute><FollowingAuctionsPage /></PrivateRoute>}
-            />
-            <Route
-              path="/my-orders"
-              element={<PrivateRoute><MyOrdersPage /></PrivateRoute>}
-            />
-            <Route
-              path="/orders/:orderId"
-              element={<PrivateRoute><OrderDetailPage /></PrivateRoute>}
-            />
-            
-          </Route>
-
-        </Routes>
-      </NotificationProvider>
-    </BrowserRouter>
+        <Actions 
+          gameState={gameState} 
+          handlers={{
+            handleBet: (amount) => handleApiCall(() => api.placeBet(amount)),
+            handleInsurance: (buy) => handleApiCall(() => api.resolveInsurance(buy)),
+            handleHit: handleHit,
+            handleStand: handleStand,
+            handleDouble: handleDouble,
+            handleSplit: handleSplit
+          }}
+        />
+      </div>
+    </div>
   );
 }
-
-export default App;

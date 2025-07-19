@@ -1,11 +1,15 @@
 package com.example.blackjack.model;
 
 import lombok.Data;
+
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 @Data
-public class GameState {
+public class GameState implements Serializable {
+    private static final long serialVersionUID = 1L;
+    
     private Deck deck;
     private List<Hand> playerHands = new ArrayList<>();
     private Hand dealerHand = new Hand();

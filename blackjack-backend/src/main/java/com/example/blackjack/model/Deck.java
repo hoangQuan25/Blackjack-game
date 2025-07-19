@@ -3,7 +3,13 @@ package com.example.blackjack.model;
 import java.util.Collections;
 import java.util.Stack;
 
-public class Deck {
+import lombok.Data;
+import java.io.Serializable;
+
+@Data
+public class Deck implements Serializable {
+    private static final long serialVersionUID = 1L;
+    
     private Stack<Card> cards = new Stack<>();
 
     public Deck(int numberOfDecks) {

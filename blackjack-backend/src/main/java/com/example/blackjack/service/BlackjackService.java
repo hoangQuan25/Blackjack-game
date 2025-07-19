@@ -1,11 +1,15 @@
 package com.example.blackjack.service;
 
 import com.example.blackjack.model.*;
+
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 public class BlackjackService {
 
@@ -16,22 +20,34 @@ public class BlackjackService {
         // Chỉ khởi tạo game state với số dư ban đầu
         GameState gameState = new GameState();
         gameState.setGameMessage("Chào mừng đến với Blackjack! Hãy đặt cược.");
+        gameState.setAvailableActions(List.of("PLACE_BET"));
+
         return gameState;
     }
 
-    public void placeBet(GameState gameState, double betAmount) {
+    public GameState placeBet(GameState gameState, double betAmount) {
         if (betAmount <= 0 || betAmount > gameState.getPlayerBalance()) {
             gameState.setGameMessage("Số tiền cược không hợp lệ.");
-            return;
+            return gameState;
+        }
+
+        double reshuffleThreshold = NUM_OF_DECKS * 52 * 0.4;
+
+        if (gameState.getDeck() == null || gameState.getDeck().size() < reshuffleThreshold) {
+            log.info("Bài còn lại quá ít, xáo lại bộ bài mới...");
+            gameState.setDeck(new Deck(NUM_OF_DECKS));
+            gameState.getDeck().shuffle();
+            // Bạn có thể thêm một thông báo cho người chơi biết
+            gameState.setGameMessage("Bộ bài đã được xáo lại. ");
         }
 
         // Setup ván bài
-        gameState.setDeck(new Deck(NUM_OF_DECKS));
-        gameState.getDeck().shuffle();
+        // gameState.setDeck(new Deck(NUM_OF_DECKS));
+        // gameState.getDeck().shuffle();
         gameState.getPlayerHands().clear();
         gameState.getDealerHand().clear();
         gameState.setPlayerBalance(gameState.getPlayerBalance() - betAmount);
-        
+
         Hand playerHand = new Hand();
         playerHand.setBetAmount(betAmount);
         playerHand.addCard(gameState.getDeck().deal());
@@ -41,8 +57,13 @@ public class BlackjackService {
         Hand dealerHand = gameState.getDealerHand();
         dealerHand.addCard(gameState.getDeck().deal());
         dealerHand.addCard(gameState.getDeck().deal());
-        
+
         gameState.setRoundOver(false);
+
+        String currentMessage = gameState.getGameMessage() != null && gameState.getGameMessage().contains("xáo lại")
+                ? gameState.getGameMessage()
+                : "";
+        gameState.setGameMessage(currentMessage + "Ván bài bắt đầu!");
 
         // **LOGIC BẢO HIỂM BẮT ĐẦU TỪ ĐÂY**
         // Nếu lá ngửa của nhà cái là Át, đề nghị bảo hiểm
@@ -51,15 +72,16 @@ public class BlackjackService {
             if (gameState.getPlayerBalance() >= insuranceCost) {
                 gameState.setGameMessage("Nhà cái có Át! Bạn muốn mua bảo hiểm (giá: " + insuranceCost + ") không?");
                 gameState.setAvailableActions(List.of("BUY_INSURANCE", "NO_INSURANCE"));
-                return; // Dừng lại chờ quyết định của người chơi
+                return gameState; // Dừng lại chờ quyết định của người chơi
             }
         }
-        
+
         // Nếu không có Át, tiếp tục như bình thường
         checkInitialBlackjacks(gameState);
+        return gameState;
     }
 
-    public void resolveInsurance(GameState gameState, boolean playerBuysInsurance) {
+    public GameState resolveInsurance(GameState gameState, boolean playerBuysInsurance) {
         Hand dealerHand = gameState.getDealerHand();
         Hand playerHand = gameState.getPlayerHands().get(0);
         double bet = playerHand.getBetAmount();
@@ -73,34 +95,61 @@ public class BlackjackService {
         boolean dealerHasBlackjack = dealerHand.getHandValue() == 21;
 
         if (dealerHasBlackjack) {
+            // Xử lý tiền cược bảo hiểm trước
             if (playerBuysInsurance) {
-                gameState.setGameMessage("Nhà cái có Blackjack. Bạn thắng cược bảo hiểm!");
-                // Thắng bảo hiểm 2:1, nhận lại đúng số tiền cược ban đầu
-                gameState.setPlayerBalance(gameState.getPlayerBalance() + bet); 
+                gameState.setGameMessage("Nhà cái có Blackjack. Bạn thắng cược bảo hiểm! ");
+                gameState.setPlayerBalance(gameState.getPlayerBalance() + playerHand.getBetAmount());
             } else {
-                gameState.setGameMessage("Nhà cái có Blackjack. Bạn thua.");
+                gameState.setGameMessage("Nhà cái có Blackjack. Cược bảo hiểm thua. ");
             }
+
+            // Bây giờ kiểm tra ván cược chính
+            if (playerHand.isBlackjack()) {
+                gameState.setGameMessage(gameState.getGameMessage() + "Ván cược chính hòa (Push).");
+                gameState.setPlayerBalance(gameState.getPlayerBalance() + playerHand.getBetAmount());
+            } else {
+                gameState.setGameMessage(gameState.getGameMessage() + "Bạn thua ván cược chính.");
+            }
+
             gameState.setRoundOver(true);
             gameState.setAvailableActions(List.of("PLACE_BET"));
         } else {
-            gameState.setGameMessage("Nhà cái không có Blackjack. Cược bảo hiểm thua. Lượt của bạn.");
-            // Game tiếp tục, kiểm tra blackjack của người chơi (trường hợp hiếm)
+            if (playerBuysInsurance) {
+                // Nếu có mua, thông báo cược bảo hiểm thua
+                gameState.setGameMessage("Nhà cái không có Blackjack. Cược bảo hiểm thua. Lượt của bạn.");
+            } else {
+                // Nếu không mua, chỉ cần thông báo và tiếp tục
+                gameState.setGameMessage("Nhà cái không có Blackjack. Lượt của bạn.");
+            }
             checkInitialBlackjacks(gameState);
         }
+
+        return gameState;
     }
 
     private void checkInitialBlackjacks(GameState gameState) {
         Hand playerHand = gameState.getPlayerHands().get(0);
-        boolean playerBlackjack = playerHand.getHandValue() == 21;
-        
-        if (playerBlackjack) {
-            resolveBlackjacks(gameState, true, false);
+        Hand dealerHand = gameState.getDealerHand();
+
+        boolean playerHasBlackjack = playerHand.isBlackjack();
+        boolean dealerHasBlackjack = dealerHand.isBlackjack();
+
+        // Chỉ xử lý khi có ít nhất một bên có Blackjack
+        if (playerHasBlackjack || dealerHasBlackjack) {
+            resolveBlackjacks(gameState, playerHasBlackjack, dealerHasBlackjack);
         } else {
+            // Nếu không ai có Blackjack, cập nhật hành động cho người chơi
             updateAvailableActions(gameState, 0);
         }
     }
 
-    public void playerHit(GameState gameState, int handIndex) {
+    public GameState playerHit(GameState gameState, int handIndex) {
+        log.info("Entering playerHit with gameState: {}", gameState); // Log khi bắt đầu
+        if (gameState == null || gameState.getDeck() == null) {
+            log.error("GameState or Deck is null at the start of playerHit!");
+            return null; // Trả về null nếu có lỗi đầu vào
+        }
+
         Hand currentHand = gameState.getPlayerHands().get(handIndex);
         currentHand.addCard(gameState.getDeck().deal());
 
@@ -111,22 +160,26 @@ public class BlackjackService {
         } else {
             updateAvailableActions(gameState, handIndex);
         }
+
+        log.info("Exiting playerHit with gameState: {}", gameState);
+        return gameState;
     }
 
-    public void playerStand(GameState gameState, int handIndex) {
+    public GameState playerStand(GameState gameState, int handIndex) {
         Hand currentHand = gameState.getPlayerHands().get(handIndex);
         currentHand.setStatus(HandStatus.STOOD);
         gameState.setGameMessage("Bạn đã dừng ở tay bài " + (handIndex + 1) + ".");
         checkIfPlayerTurnIsOver(gameState);
+        return gameState;
     }
 
-    public void playerDoubleDown(GameState gameState, int handIndex) {
+    public GameState playerDoubleDown(GameState gameState, int handIndex) {
         Hand currentHand = gameState.getPlayerHands().get(handIndex);
         double betAmount = currentHand.getBetAmount();
 
         if (gameState.getPlayerBalance() < betAmount) {
-             gameState.setGameMessage("Không đủ tiền để cược gấp đôi!");
-             return;
+            gameState.setGameMessage("Không đủ tiền để cược gấp đôi!");
+            return gameState;
         }
 
         gameState.setPlayerBalance(gameState.getPlayerBalance() - betAmount);
@@ -138,33 +191,52 @@ public class BlackjackService {
         } else {
             currentHand.setStatus(HandStatus.STOOD);
         }
-        
+
         checkIfPlayerTurnIsOver(gameState);
+
+        return gameState;
     }
-    
-    public void playerSplit(GameState gameState, int handIndex) {
+
+    public GameState playerSplit(GameState gameState, int handIndex) {
         Hand originalHand = gameState.getPlayerHands().get(handIndex);
         double betAmount = originalHand.getBetAmount();
 
         if (gameState.getPlayerBalance() < betAmount) {
             gameState.setGameMessage("Không đủ tiền để tách bài!");
-            return;
+            return gameState;
         }
 
-        // Tạo tay bài mới
+        // Lấy rank của lá bài trước khi tách để kiểm tra có phải là Át không
+        Rank splitRank = originalHand.getCards().get(0).getRank();
+
+        // Setup tay bài mới và trừ tiền
+        gameState.setPlayerBalance(gameState.getPlayerBalance() - betAmount);
         Hand newHand = new Hand();
         newHand.setBetAmount(betAmount);
-        gameState.setPlayerBalance(gameState.getPlayerBalance() - betAmount);
 
-        // Chuyển 1 lá bài và chia thêm bài
+        // Chuyển 1 lá bài và chia thêm bài cho cả hai tay
         newHand.addCard(originalHand.getCards().remove(1));
         originalHand.addCard(gameState.getDeck().deal());
         newHand.addCard(gameState.getDeck().deal());
-
         gameState.getPlayerHands().add(handIndex + 1, newHand);
-        updateAvailableActions(gameState, handIndex);
-    }
 
+        // KIỂM TRA LUẬT ĐẶC BIỆT KHI TÁCH ÁT
+        if (splitRank == Rank.ACE) {
+            // Tự động cho cả hai tay "Dừng" (Stand) sau khi nhận thêm 1 lá
+            originalHand.setStatus(HandStatus.STOOD);
+            newHand.setStatus(HandStatus.STOOD);
+            gameState.setGameMessage("Bạn đã tách Át. Mỗi tay nhận thêm một lá và lượt chơi của hai tay này kết thúc.");
+
+            // Kiểm tra xem lượt của người chơi đã hết chưa (để chuyển cho nhà cái)
+            checkIfPlayerTurnIsOver(gameState);
+        } else {
+            // Nếu không phải tách Át, thì tiếp tục như bình thường
+            gameState.setGameMessage("Bạn đã tách bài. Chơi tay bài đầu tiên.");
+            updateAvailableActions(gameState, handIndex);
+        }
+
+        return gameState;
+    }
 
     private void checkIfPlayerTurnIsOver(GameState gameState) {
         // Tìm xem còn tay bài nào đang chơi không
@@ -178,44 +250,54 @@ public class BlackjackService {
         // Nếu không còn tay bài nào đang chơi -> đến lượt nhà cái
         dealerTurn(gameState);
     }
-    
+
     private void dealerTurn(GameState gameState) {
         gameState.setGameMessage("Lượt của nhà cái.");
         Hand dealerHand = gameState.getDealerHand();
-        
+
         // Lật bài và rút cho đến khi đủ hoặc hơn 17
         while (dealerHand.getHandValue() < DEALER_STAND_VALUE) {
             dealerHand.addCard(gameState.getDeck().deal());
         }
-        
+
         resolveBets(gameState);
     }
 
     private void resolveBets(GameState gameState) {
         Hand dealerHand = gameState.getDealerHand();
         int dealerValue = dealerHand.getHandValue();
-        StringBuilder finalMessage = new StringBuilder("Kết quả: ");
+        // Khởi tạo StringBuilder
+        StringBuilder finalMessage = new StringBuilder("Kết quả - ");
+        int handNumber = 1; // Dùng để đánh số thứ tự tay bài
 
         for (Hand playerHand : gameState.getPlayerHands()) {
             int playerValue = playerHand.getHandValue();
             double bet = playerHand.getBetAmount();
-            
+
+            // Thêm định danh cho mỗi tay bài vào tin nhắn
+            if (gameState.getPlayerHands().size() > 1) {
+                finalMessage.append("Tay ").append(handNumber).append(": ");
+            }
+
             if (playerHand.getStatus() == HandStatus.BUSTED) {
-                finalMessage.append("Bạn thua (quắc). ");
+                finalMessage.append("Thua (quắc). ");
                 // Tiền đã bị trừ
             } else if (dealerValue > 21 || playerValue > dealerValue) {
-                finalMessage.append("Bạn thắng! ");
+                finalMessage.append("Thắng! ");
                 gameState.setPlayerBalance(gameState.getPlayerBalance() + bet * 2);
             } else if (playerValue < dealerValue) {
-                finalMessage.append("Bạn thua. ");
+                finalMessage.append("Thua. ");
             } else { // push
                 finalMessage.append("Hòa (push). ");
                 gameState.setPlayerBalance(gameState.getPlayerBalance() + bet);
             }
+            handNumber++; // Tăng số đếm cho tay bài tiếp theo
         }
-        gameState.setGameMessage(finalMessage.toString());
+
+        // Đặt thông báo cuối cùng đã được định dạng
+        gameState.setGameMessage(finalMessage.toString().trim()); // .trim() để xóa dấu cách thừa ở cuối
         gameState.setRoundOver(true);
-        gameState.setAvailableActions(List.of("PLACE_BET")); // Chỉ cho phép cược lại
+        gameState.setAvailableActions(List.of("PLACE_BET"));
     }
 
     private void resolveBlackjacks(GameState gameState, boolean playerBlackjack, boolean dealerBlackjack) {
@@ -234,10 +316,10 @@ public class BlackjackService {
         gameState.setRoundOver(true);
         gameState.setAvailableActions(List.of("PLACE_BET"));
     }
-    
+
     private void updateAvailableActionsForCurrentHand(GameState gameState) {
-        for(int i = 0; i < gameState.getPlayerHands().size(); i++){
-            if(gameState.getPlayerHands().get(i).getStatus() == HandStatus.PLAYING){
+        for (int i = 0; i < gameState.getPlayerHands().size(); i++) {
+            if (gameState.getPlayerHands().get(i).getStatus() == HandStatus.PLAYING) {
                 updateAvailableActions(gameState, i);
                 return;
             }
@@ -247,10 +329,10 @@ public class BlackjackService {
     private void updateAvailableActions(GameState gameState, int handIndex) {
         List<String> actions = new ArrayList<>();
         Hand currentHand = gameState.getPlayerHands().get(handIndex);
-        
+
         actions.add("HIT");
         actions.add("STAND");
-        
+
         // Kiểm tra điều kiện Double Down
         if (currentHand.getCards().size() == 2 && gameState.getPlayerBalance() >= currentHand.getBetAmount()) {
             actions.add("DOUBLE_DOWN");
@@ -258,11 +340,11 @@ public class BlackjackService {
 
         // Kiểm tra điều kiện Split
         if (currentHand.getCards().size() == 2 &&
-            currentHand.getCards().get(0).getRank() == currentHand.getCards().get(1).getRank() &&
-            gameState.getPlayerBalance() >= currentHand.getBetAmount()) {
+                currentHand.getCards().get(0).getRank() == currentHand.getCards().get(1).getRank() &&
+                gameState.getPlayerBalance() >= currentHand.getBetAmount()) {
             actions.add("SPLIT");
         }
-        
+
         gameState.setAvailableActions(actions);
     }
 }

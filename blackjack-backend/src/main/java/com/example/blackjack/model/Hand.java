@@ -1,11 +1,14 @@
 package com.example.blackjack.model;
 
 import lombok.Data;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 @Data
-public class Hand {
+public class Hand implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     private List<Card> cards = new ArrayList<>();
     private double betAmount;
     private HandStatus status = HandStatus.PLAYING;
@@ -30,7 +33,11 @@ public class Hand {
         }
         return value;
     }
-    
+
+    public boolean isBlackjack() {
+        return getCards().size() == 2 && getHandValue() == 21;
+    }
+
     public void clear() {
         cards.clear();
         betAmount = 0;

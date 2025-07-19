@@ -1,5 +1,7 @@
 package com.example.blackjack.model;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
+@JsonFormat(shape = JsonFormat.Shape.OBJECT)
 public enum Rank {
     TWO("2", 2),
     THREE("3", 3),

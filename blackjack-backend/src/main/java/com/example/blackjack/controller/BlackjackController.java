@@ -3,10 +3,13 @@ package com.example.blackjack.controller;
 import com.example.blackjack.model.GameState;
 import com.example.blackjack.service.BlackjackService;
 import jakarta.servlet.http.HttpSession;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/game")
 public class BlackjackController {
@@ -22,6 +25,7 @@ public class BlackjackController {
             gameState = blackjackService.startGame();
             session.setAttribute("gameState", gameState);
         }
+        log.info("Current game state: {}", gameState);
         return ResponseEntity.ok(gameState);
     }
 
@@ -33,8 +37,9 @@ public class BlackjackController {
         if (gameState == null) {
              gameState = blackjackService.startGame();
         }
-        blackjackService.placeBet(gameState, amount);
+        gameState = blackjackService.placeBet(gameState, amount);
         session.setAttribute("gameState", gameState);
+        log.info("Bet placed: {}, new game state: {}", amount, gameState);
         return ResponseEntity.ok(gameState);
     }
     
@@ -43,9 +48,10 @@ public class BlackjackController {
     public ResponseEntity<GameState> insurance(@RequestParam boolean buy, HttpSession session) {
         GameState gameState = (GameState) session.getAttribute("gameState");
         if (gameState != null) {
-            blackjackService.resolveInsurance(gameState, buy);
+            gameState = blackjackService.resolveInsurance(gameState, buy);
             session.setAttribute("gameState", gameState);
         }
+        log.info("Insurance action: {}, new game state: {}", buy, gameState);
         return ResponseEntity.ok(gameState);
     }
 
@@ -54,9 +60,11 @@ public class BlackjackController {
     public ResponseEntity<GameState> hit(@RequestParam int handIndex, HttpSession session) {
         GameState gameState = (GameState) session.getAttribute("gameState");
         if (gameState != null && !gameState.isRoundOver()) {
-            blackjackService.playerHit(gameState, handIndex);
+            gameState = blackjackService.playerHit(gameState, handIndex);
+            
             session.setAttribute("gameState", gameState);
         }
+        log.info("Player hit on hand index: {}, new game state: {}", handIndex, gameState);
         return ResponseEntity.ok(gameState);
     }
 
@@ -64,9 +72,10 @@ public class BlackjackController {
     public ResponseEntity<GameState> stand(@RequestParam int handIndex, HttpSession session) {
         GameState gameState = (GameState) session.getAttribute("gameState");
         if (gameState != null && !gameState.isRoundOver()) {
-            blackjackService.playerStand(gameState, handIndex);
+            gameState = blackjackService.playerStand(gameState, handIndex);
             session.setAttribute("gameState", gameState);
         }
+        log.info("Player stands on hand index: {}, new game state: {}", handIndex, gameState);
         return ResponseEntity.ok(gameState);
     }
     
@@ -74,9 +83,10 @@ public class BlackjackController {
     public ResponseEntity<GameState> doubleDown(@RequestParam int handIndex, HttpSession session) {
         GameState gameState = (GameState) session.getAttribute("gameState");
         if (gameState != null && !gameState.isRoundOver()) {
-            blackjackService.playerDoubleDown(gameState, handIndex);
+            gameState = blackjackService.playerDoubleDown(gameState, handIndex);
             session.setAttribute("gameState", gameState);
         }
+        log.info("Player doubles down on hand index: {}, new game state: {}", handIndex, gameState);
         return ResponseEntity.ok(gameState);
     }
 
@@ -84,9 +94,10 @@ public class BlackjackController {
     public ResponseEntity<GameState> split(@RequestParam int handIndex, HttpSession session) {
         GameState gameState = (GameState) session.getAttribute("gameState");
         if (gameState != null && !gameState.isRoundOver()) {
-            blackjackService.playerSplit(gameState, handIndex);
+            gameState = blackjackService.playerSplit(gameState, handIndex);
             session.setAttribute("gameState", gameState);
         }
+        log.info("Player splits on hand index: {}, new game state: {}", handIndex, gameState);
         return ResponseEntity.ok(gameState);
     }
 }

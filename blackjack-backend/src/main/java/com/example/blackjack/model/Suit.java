@@ -1,5 +1,7 @@
 package com.example.blackjack.model;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
+@JsonFormat(shape = JsonFormat.Shape.OBJECT)
 public enum Suit {
     HEARTS("♥"),
     DIAMONDS("♦"),
